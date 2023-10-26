@@ -19,13 +19,16 @@ int main(int argc, char *argv[])
     struct sockaddr_in serv_addr;
     struct hostent *server;
 
+    // Streaming socket. Do we need datagram??
     char buffer[256];
     if (argc < 3) {
        fprintf(stderr,"usage %s hostname port\n", argv[0]);
        exit(0);
     }
+
+
     portno = atoi(argv[2]);
-    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);   // streaming!
     if (sockfd < 0) 
         error("ERROR opening socket");
     server = gethostbyname(argv[1]);
