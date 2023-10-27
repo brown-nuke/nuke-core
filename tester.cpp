@@ -143,30 +143,34 @@ bool ownership_update_add(string user_id, string row_id, int database_id) {
 
 // retruns true if the row is no longer owned by anyone
 bool ownership_update_remove(string user_id, string row_id, int database_id) {
-    auto vec1 = database_maps[database_id].user_to_row[user_id];
-    for (size_t i = 0; i < vec1.size(); i++) {
-        if (vec1[i] == row_id) {
-            vec1.erase(vec1.begin() + i);
-            break;
+    if (database_maps[database_id].user_to_row.find(user_id) != database_maps[database_id].user_to_row.end()) {
+        auto vec1 = database_maps[database_id].user_to_row[user_id];
+        for (size_t i = 0; i < vec1.size(); i++) {
+            if (vec1[i] == row_id) {
+                vec1.erase(vec1.begin() + i);
+                break;
+            }
         }
     }
 
-    // this will be handled by the do_nuke function to not break the iterator
+    // this will be handled by the do_nuke() function to not break the iterator
     // if (vec1.size() == 0) {
     //     database_maps[database_id].user_to_row.erase(user_id);
     // }
     
-    
-    auto vec2 = database_maps[database_id].row_to_user[user_id];
-    for (size_t i = 0; i < vec2.size(); i++) {
-        if (vec2[i] == row_id) {
-            vec2.erase(vec2.begin() + i);
-            break;
+    if (database_maps[database_id].row_to_user.find(row_id) != database_maps[database_id].row_to_user.end()) {
+        auto vec = database_maps[database_id].row_to_user[row_id];
+        for (size_t i = 0; i < vec.size(); i++) {
+            if (vec[i] == user_id) {
+                vec.erase(vec.begin() + i);
+                break;
+            }
         }
-    }
-    if (vec2.size() == 0) {
-        database_maps[database_id].row_to_user.erase(row_id);
-        return true;
+
+        if (vec.size() == 0) {
+            database_maps[database_id].row_to_user.erase(row_id);
+            return true;
+        }
     }
 
     return false;
@@ -281,4 +285,25 @@ int main(){
     cout << setw(25) << left << "Total sql_dels " << total_sql_dels << endl;
 
     cout << setw(25) << left << "Total operations " << total_mongo_reads + total_mongo_inserts + total_mongo_updates + total_mongo_dels + total_kv_reads + total_kv_inserts + total_kv_updates + total_kv_dels + total_sql_dels + total_sql_inserts + total_sql_reads + total_sql_updates << endl;
+
+    cout << "Before nuke: " << endl;
+    for (size_t i = 0; i < NUM_DATABASE; i++) {
+        cout << database_maps[i].user_to_row.size() << " " << database_maps[i].row_to_user.size() << endl;
+    }
+    
+
+    for (size_t i = 0; i < NUM_DATABASE; i++) {
+        for (int j = 0; j < NUM_USERS; j++) {
+            nuke(users[j], i);
+        }
+    }
+
+    do_nuke();
+
+    // ideally we should see all zeroes
+    // but note that we use non concurrent maps
+    cout << "After nuke: " << endl;
+    for (size_t i = 0; i < NUM_DATABASE; i++) {
+        cout << database_maps[i].user_to_row.size() << " " << database_maps[i].row_to_user.size() << endl;
+    }
 }
