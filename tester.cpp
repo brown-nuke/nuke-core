@@ -6,20 +6,30 @@
 #include <thread>
 #include <utility>
 
+#include <unordered_map>
+#include <vector>
+#include <set>
+#include <algorithm>
+
 #define NUM_USERS 100
 #define NUM_OPERATIONS 10
 #define NUM_THREADS 4
 #define NUM_DATABASE 3
 #define NUKE 1
+#define NUKE_CNT 5
 
 using namespace std;
 
 thread threads[NUM_THREADS];
 
 struct database_mapping_struct{
-    unordered_map<string, vector<string>> user_to_row;    // TODO: Concurrent HashMap!
+    unordered_map<string, vector<string>> user_to_row;    // TODO: Concurrent Map! or use persisted KV store
     unordered_map<string, vector<string>> row_to_user;
 };
+
+// user id to how many times nuked
+// if exceeds NUKE_CNT, then remove from users_to_nuke
+unordered_map<string, int> users_to_nuke; // TODO: Concurrent Map! or use persisted KV store
 
 // TODO: Have a concurrent list to keep track of the active taints
 // The moment you start nuke, you remove the relevant stuff from this list!
@@ -36,9 +46,12 @@ struct database_mapping_struct{
 // has other owners using the first map!
 // unordered_map<string, string> database_maps[NUM_DATABASE];
 database_mapping_struct database_maps[NUM_DATABASE];
-string operations[NUM_DATABASE * 4] = {"mongo_read", "mongo_insert", "mongo_update", "mongo_del", "kv_read",
-                                        "kv_insert", "kv_update", "kv_del", "sql_read", "sql_insert", "sql_update", "sql_del",};
+string operations[NUM_DATABASE * 4] = {
+    "mongo_read", "mongo_insert", "mongo_update", "mongo_del",
+    "kv_read", "kv_insert", "kv_update", "kv_del",
+    "sql_read", "sql_insert", "sql_update", "sql_del"};
 string users [NUM_USERS];
+
 
 /////// STATS //////////
 ////////////////////////
@@ -71,6 +84,83 @@ int sql_dels[NUM_THREADS];
 
 ////////////////////////
 ////////////////////////
+
+// retruns true if we can proceed with the insert
+bool ownership_update_add(string user_id, string row_id, int database_id) {
+    if (users_to_nuke.find(user_id) != users_to_nuke.end()) {
+        return false;
+    }
+    
+    database_maps[database_id].user_to_row[user_id].push_back(row_id);
+    database_maps[database_id].row_to_user[row_id].push_back(user_id);
+
+    return true;
+}
+
+// retruns true if the row is no longer owned by anyone
+bool ownership_update_remove(string user_id, string row_id, int database_id) {
+    auto vec1 = database_maps[database_id].user_to_row[user_id];
+    for (size_t i = 0; i < vec1.size(); i++) {
+        if (vec1[i] == row_id) {
+            vec1.erase(vec1.begin() + i);
+            break;
+        }
+    }
+
+    // this will be handled by the do_nuke function to not break the iterator
+    // if (vec1.size() == 0) {
+    //     database_maps[database_id].user_to_row.erase(user_id);
+    // }
+    
+    
+    auto vec2 = database_maps[database_id].row_to_user[user_id];
+    for (size_t i = 0; i < vec2.size(); i++) {
+        if (vec2[i] == row_id) {
+            vec2.erase(vec2.begin() + i);
+            break;
+        }
+    }
+    if (vec2.size() == 0) {
+        database_maps[database_id].row_to_user.erase(row_id);
+        return true;
+    }
+
+    return false;
+}
+
+void nuke(string user_id, int database_id) {
+    users_to_nuke[user_id] = 0;
+}
+
+void delete_row(string row_id, int database_id) {
+    if (database_id == 0) {
+        // TODO: mongo db delete
+    } else if (database_id == 1) {
+        // TODO: kv db delete
+    } else if (database_id == 2) {
+        // TODO: sql db delete
+    }
+}
+
+void do_nuke() {
+    for (auto it = users_to_nuke.begin(); it != users_to_nuke.end(); it++) {                          // iterate all users to nuke
+        for (size_t i = 0; i < NUM_DATABASE; i++) {                                                   // in all databases
+            if (database_maps[i].user_to_row.find(it->first) != database_maps[i].user_to_row.end()) { // if user exists in database
+                for (auto row_id : database_maps[i].user_to_row[it->first]) {                         // for each row that user owns
+                    if (ownership_update_remove(it->first, row_id, i)) {                              // remove user's ownership of row
+                        delete_row(row_id, i);                                                        // row is no longer owned by anyone
+                    }
+                }
+                database_maps[i].user_to_row.erase(it->first);                                         // remove user from database
+            }
+        }
+        
+        if (it->second++ > NUKE_CNT) {
+            // we nuked this user enough times, remove from the map
+            users_to_nuke.erase(it->first);
+        }
+    }
+}
 
 
 void thread_function_start(int id){
