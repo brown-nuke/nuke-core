@@ -17,6 +17,7 @@
 #define NUM_DATABASE 3
 #define NUKE 1
 #define NUKE_CNT 5
+#define OP_CNT 4
 
 using namespace std;
 
@@ -52,6 +53,17 @@ string operations[NUM_DATABASE * 4] = {
     "sql_read", "sql_insert", "sql_update", "sql_del"};
 string users [NUM_USERS];
 
+/////// INDEX /////////
+///////////////////////
+
+// 0 -> mongo
+// 1 -> kv
+// 2 -> sql
+
+// 0 -> read
+// 1 -> insert
+// 2 -> update
+// 3 -> del
 
 /////// STATS //////////
 ////////////////////////
@@ -69,21 +81,53 @@ int total_sql_inserts = 0UL;
 int total_sql_updates = 0UL;
 int total_sql_dels = 0UL;
 
-int mongo_reads[NUM_THREADS];
-int mongo_inserts[NUM_THREADS];
-int mongo_updates[NUM_THREADS];
-int mongo_dels[NUM_THREADS];
-int kv_reads[NUM_THREADS];
-int kv_inserts[NUM_THREADS];
-int kv_updates[NUM_THREADS];
-int kv_dels[NUM_THREADS];
-int sql_reads[NUM_THREADS];
-int sql_inserts[NUM_THREADS];
-int sql_updates[NUM_THREADS];
-int sql_dels[NUM_THREADS];
+int op_counts[NUM_DATABASE][OP_CNT][NUM_THREADS];
 
-////////////////////////
-////////////////////////
+///////// ROW OPERATIONS /////////
+//////////////////////////////////
+
+void read_row(string row_id, int database_id) {
+    if (database_id == 0) {
+        // TODO: mongo db read
+    } else if (database_id == 1) {
+        // TODO: kv db read
+    } else if (database_id == 2) {
+        // TODO: sql db read
+    }
+}
+
+void insert_row(string row_id, int database_id) {
+    if (database_id == 0) {
+        // TODO: mongo db insert
+    } else if (database_id == 1) {
+        // TODO: kv db insert
+    } else if (database_id == 2) {
+        // TODO: sql db insert
+    }
+}
+
+void update_row(string row_id, int database_id) {
+    if (database_id == 0) {
+        // TODO: mongo db update
+    } else if (database_id == 1) {
+        // TODO: kv db update
+    } else if (database_id == 2) {
+        // TODO: sql db update
+    }
+}
+
+void delete_row(string row_id, int database_id) {
+    if (database_id == 0) {
+        // TODO: mongo db delete
+    } else if (database_id == 1) {
+        // TODO: kv db delete
+    } else if (database_id == 2) {
+        // TODO: sql db delete
+    }
+}
+
+///////// OWNERSHIP /////////
+/////////////////////////////
 
 // retruns true if we can proceed with the insert
 bool ownership_update_add(string user_id, string row_id, int database_id) {
@@ -132,16 +176,6 @@ void nuke(string user_id, int database_id) {
     users_to_nuke[user_id] = 0;
 }
 
-void delete_row(string row_id, int database_id) {
-    if (database_id == 0) {
-        // TODO: mongo db delete
-    } else if (database_id == 1) {
-        // TODO: kv db delete
-    } else if (database_id == 2) {
-        // TODO: sql db delete
-    }
-}
-
 void do_nuke() {
     for (auto it = users_to_nuke.begin(); it != users_to_nuke.end(); it++) {                          // iterate all users to nuke
         for (size_t i = 0; i < NUM_DATABASE; i++) {                                                   // in all databases
@@ -162,62 +196,41 @@ void do_nuke() {
     }
 }
 
+///////// SIMULATION /////////
+/////////////////////////////
+
+void row_op(string user_id, string row_id, int database_id, int op_id) {
+    if (op_id == 0) {
+        read_row(row_id, database_id);
+    } else if (op_id == 1) {
+        if (NUKE) {
+            if (ownership_update_add(user_id, row_id, database_id) == false) {
+                // only add data if there is no ongoing nuke
+                insert_row(row_id, database_id);
+            }
+        } else {
+            insert_row(row_id, database_id);
+        }
+    } else if (op_id == 2) {
+        update_row(row_id, database_id);
+    } else if (op_id == 3) {
+        delete_row(row_id, database_id);
+    }
+}
 
 void thread_function_start(int id){
     cout << "Thread " << id << " started execution" << endl;
-    int random_op, random_user;
+    int random_db, random_op, random_user;
 
     for (int operation_count = 0; operation_count < NUM_OPERATIONS; operation_count++) {
-        random_op = rand() / ((RAND_MAX + 1u) / (NUM_DATABASE * 4));    // TODO: not uniformly random
-        random_user = rand() / ((RAND_MAX + 1u) / (NUM_USERS));
 
-        if (operations[random_op] == "mongo_read") {
-            mongo_reads[id]++;
-            // call driver!
-        }
-        else if (operations[random_op] == "mongo_insert") {
-            mongo_inserts[id]++;
-            if (NUKE) {
-                // find unique identifier (for user + for the database)
-                // push to hashmap (k,v from above)
-                // call driver
-            }
-            else {
-                // call driver
-            }
-        }
-        else if (operations[random_op] == "mongo_update") {
-            mongo_updates[id]++;
-        }
-        else if (operations[random_op] == "mongo_del") {
-            mongo_dels[id]++;
-        }
-        else if (operations[random_op] == "kv_read") {
-            kv_reads[id]++;
-            // call driver!
-        }
-        else if (operations[random_op] == "kv_insert") {
-            kv_inserts[id]++;
-        }
-        else if (operations[random_op] == "kv_update") {
-            kv_updates[id]++;
-        }
-        else if (operations[random_op] == "kv_del") {
-            kv_dels[id]++;
-        }
-        else if (operations[random_op] == "sql_read") {
-            sql_reads[id]++;
-            // call driver!
-        }
-        else if (operations[random_op] == "sql_insert") {
-            sql_inserts[id]++;
-        }
-        else if (operations[random_op] == "sql_update") {
-            sql_updates[id]++;
-        }
-        else if (operations[random_op] == "sql_del") {
-            sql_dels[id]++;
-        }
+        // TODO: not uniformly random
+        random_db = rand() % NUM_DATABASE;
+        random_op = rand() % OP_CNT;   
+        random_user = rand() % NUM_USERS;
+
+        row_op(users[random_user], to_string(rand()), random_db, random_op);
+        op_counts[random_db][random_op][id]++;
     }
 
     cout << "Thread " << id << " done" << endl;
@@ -239,18 +252,18 @@ int main(){
     }
 
     for (int i = 0; i < NUM_THREADS; i++) {
-        total_mongo_reads += mongo_reads[i];
-        total_mongo_inserts += mongo_inserts[i];
-        total_mongo_updates += mongo_updates[i];
-        total_mongo_dels += mongo_dels[i];
-        total_kv_reads += kv_reads[i];
-        total_kv_inserts += kv_inserts[i];
-        total_kv_updates += kv_updates[i];
-        total_kv_dels += kv_dels[i];
-        total_sql_reads += sql_reads[i];
-        total_sql_inserts += sql_inserts[i];
-        total_sql_updates += sql_updates[i];
-        total_sql_dels += sql_dels[i];
+        total_mongo_reads += op_counts[0][0][i];
+        total_mongo_inserts += op_counts[0][1][i];
+        total_mongo_updates += op_counts[0][2][i];
+        total_mongo_dels += op_counts[0][3][i];
+        total_kv_reads += op_counts[1][0][i];
+        total_kv_inserts += op_counts[1][1][i];
+        total_kv_updates += op_counts[1][2][i];
+        total_kv_dels += op_counts[1][3][i];
+        total_sql_reads += op_counts[2][0][i];
+        total_sql_inserts += op_counts[2][1][i];
+        total_sql_updates += op_counts[2][2][i];
+        total_sql_dels += op_counts[2][3][i];
     }
 
     // STATS Aggreagation
