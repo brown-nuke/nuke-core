@@ -23,8 +23,9 @@ using namespace std;
 
 thread threads[NUM_THREADS];
 
-struct database_mapping_struct{
-    unordered_map<string, vector<string>> user_to_row;    // TODO: Concurrent Map! or use persisted KV store
+struct database_mapping_struct
+{
+    unordered_map<string, vector<string>> user_to_row; // TODO: Concurrent Map! or use persisted KV store
     unordered_map<string, vector<string>> row_to_user;
 };
 
@@ -51,7 +52,7 @@ string operations[NUM_DATABASE * 4] = {
     "mongo_read", "mongo_insert", "mongo_update", "mongo_del",
     "kv_read", "kv_insert", "kv_update", "kv_del",
     "sql_read", "sql_insert", "sql_update", "sql_del"};
-string users [NUM_USERS];
+string users[NUM_USERS];
 
 /////// INDEX /////////
 ///////////////////////
@@ -86,42 +87,66 @@ int op_counts[NUM_DATABASE][OP_CNT][NUM_THREADS];
 ///////// ROW OPERATIONS /////////
 //////////////////////////////////
 
-void read_row(string row_id, int database_id) {
-    if (database_id == 0) {
+void read_row(string row_id, int database_id)
+{
+    if (database_id == 0)
+    {
         // TODO: mongo db read
-    } else if (database_id == 1) {
+    }
+    else if (database_id == 1)
+    {
         // TODO: kv db read
-    } else if (database_id == 2) {
+    }
+    else if (database_id == 2)
+    {
         // TODO: sql db read
     }
 }
 
-void insert_row(string row_id, int database_id) {
-    if (database_id == 0) {
+void insert_row(string row_id, int database_id)
+{
+    if (database_id == 0)
+    {
         // TODO: mongo db insert
-    } else if (database_id == 1) {
+    }
+    else if (database_id == 1)
+    {
         // TODO: kv db insert
-    } else if (database_id == 2) {
+    }
+    else if (database_id == 2)
+    {
         // TODO: sql db insert
     }
 }
 
-void update_row(string row_id, int database_id) {
-    if (database_id == 0) {
+void update_row(string row_id, int database_id)
+{
+    if (database_id == 0)
+    {
         // TODO: mongo db update
-    } else if (database_id == 1) {
+    }
+    else if (database_id == 1)
+    {
         // TODO: kv db update
-    } else if (database_id == 2) {
+    }
+    else if (database_id == 2)
+    {
         // TODO: sql db update
     }
 }
 
-void delete_row(string row_id, int database_id) {
-    if (database_id == 0) {
+void delete_row(string row_id, int database_id)
+{
+    if (database_id == 0)
+    {
         // TODO: mongo db delete
-    } else if (database_id == 1) {
+    }
+    else if (database_id == 1)
+    {
         // TODO: kv db delete
-    } else if (database_id == 2) {
+    }
+    else if (database_id == 2)
+    {
         // TODO: sql db delete
     }
 }
@@ -130,11 +155,13 @@ void delete_row(string row_id, int database_id) {
 /////////////////////////////
 
 // retruns true if we can proceed with the insert
-bool ownership_update_add(string user_id, string row_id, int database_id) {
-    if (users_to_nuke.find(user_id) != users_to_nuke.end()) {
+bool ownership_update_add(string user_id, string row_id, int database_id)
+{
+    if (users_to_nuke.find(user_id) != users_to_nuke.end())
+    {
         return false;
     }
-    
+
     database_maps[database_id].user_to_row[user_id].push_back(row_id);
     database_maps[database_id].row_to_user[row_id].push_back(user_id);
 
@@ -142,32 +169,41 @@ bool ownership_update_add(string user_id, string row_id, int database_id) {
 }
 
 // retruns true if the row is no longer owned by anyone
-bool ownership_update_remove(string user_id, string row_id, int database_id) {
-    if (database_maps[database_id].user_to_row.find(user_id) != database_maps[database_id].user_to_row.end()) {
-        auto vec1 = database_maps[database_id].user_to_row[user_id];
-        for (size_t i = 0; i < vec1.size(); i++) {
-            if (vec1[i] == row_id) {
-                vec1.erase(vec1.begin() + i);
-                break;
-            }
-        }
-    }
-
-    // this will be handled by the do_nuke() function to not break the iterator
-    // if (vec1.size() == 0) {
-    //     database_maps[database_id].user_to_row.erase(user_id);
-    // }
-    
-    if (database_maps[database_id].row_to_user.find(row_id) != database_maps[database_id].row_to_user.end()) {
-        auto vec = database_maps[database_id].row_to_user[row_id];
-        for (size_t i = 0; i < vec.size(); i++) {
-            if (vec[i] == user_id) {
+bool ownership_update_remove(string user_id, string row_id, int database_id)
+{
+    if (database_maps[database_id].user_to_row.find(user_id) != database_maps[database_id].user_to_row.end())
+    {
+        auto vec = database_maps[database_id].user_to_row[user_id];
+        for (size_t i = 0; i < vec.size(); i++)
+        {
+            if (vec[i] == row_id)
+            {
                 vec.erase(vec.begin() + i);
                 break;
             }
         }
 
-        if (vec.size() == 0) {
+        // this will be handled by the do_nuke() function to not break the iterator
+        // if (vec.size() == 0)
+        // {
+        //     database_maps[database_id].user_to_row.erase(user_id);
+        // }
+    }
+
+    if (database_maps[database_id].row_to_user.find(row_id) != database_maps[database_id].row_to_user.end())
+    {
+        auto vec = database_maps[database_id].row_to_user[row_id];
+        for (size_t i = 0; i < vec.size(); i++)
+        {
+            if (vec[i] == user_id)
+            {
+                vec.erase(vec.begin() + i);
+                break;
+            }
+        }
+
+        if (vec.size() == 0)
+        {
             database_maps[database_id].row_to_user.erase(row_id);
             return true;
         }
@@ -176,24 +212,39 @@ bool ownership_update_remove(string user_id, string row_id, int database_id) {
     return false;
 }
 
-void nuke(string user_id, int database_id) {
+void nuke(string user_id, int database_id)
+{
     users_to_nuke[user_id] = 0;
 }
 
-void do_nuke() {
-    for (auto it = users_to_nuke.begin(); it != users_to_nuke.end(); it++) {                          // iterate all users to nuke
-        for (size_t i = 0; i < NUM_DATABASE; i++) {                                                   // in all databases
-            if (database_maps[i].user_to_row.find(it->first) != database_maps[i].user_to_row.end()) { // if user exists in database
-                for (auto row_id : database_maps[i].user_to_row[it->first]) {                         // for each row that user owns
-                    if (ownership_update_remove(it->first, row_id, i)) {                              // remove user's ownership of row
-                        delete_row(row_id, i);                                                        // row is no longer owned by anyone
+void do_nuke()
+{
+    // iterate all users to nuke
+    for (auto it = users_to_nuke.begin(); it != users_to_nuke.end(); it++)
+    {
+        // in all databases
+        for (size_t i = 0; i < NUM_DATABASE; i++)
+        {
+            // if user exists in database
+            if (database_maps[i].user_to_row.find(it->first) != database_maps[i].user_to_row.end())
+            {
+                // for each row that user owns
+                for (auto row_id : database_maps[i].user_to_row[it->first])
+                {
+                    // remove user's ownership of row
+                    if (ownership_update_remove(it->first, row_id, i))
+                    {
+                        // row is no longer owned by anyone
+                        delete_row(row_id, i);
                     }
                 }
-                database_maps[i].user_to_row.erase(it->first);                                         // remove user from database
+                // remove user from database
+                database_maps[i].user_to_row.erase(it->first);
             }
         }
-        
-        if (it->second++ > NUKE_CNT) {
+
+        if (it->second++ > NUKE_CNT)
+        {
             // we nuked this user enough times, remove from the map
             users_to_nuke.erase(it->first);
         }
@@ -203,34 +254,48 @@ void do_nuke() {
 ///////// SIMULATION /////////
 /////////////////////////////
 
-void row_op(string user_id, string row_id, int database_id, int op_id) {
-    if (op_id == 0) {
+void row_op(string user_id, string row_id, int database_id, int op_id)
+{
+    if (op_id == 0)
+    {
         read_row(row_id, database_id);
-    } else if (op_id == 1) {
-        if (NUKE) {
-            if (ownership_update_add(user_id, row_id, database_id) == false) {
+    }
+    else if (op_id == 1)
+    {
+        if (NUKE)
+        {
+            if (ownership_update_add(user_id, row_id, database_id) == false)
+            {
                 // only add data if there is no ongoing nuke
                 insert_row(row_id, database_id);
             }
-        } else {
+        }
+        else
+        {
             insert_row(row_id, database_id);
         }
-    } else if (op_id == 2) {
+    }
+    else if (op_id == 2)
+    {
         update_row(row_id, database_id);
-    } else if (op_id == 3) {
+    }
+    else if (op_id == 3)
+    {
         delete_row(row_id, database_id);
     }
 }
 
-void thread_function_start(int id){
+void thread_function_start(int id)
+{
     cout << "Thread " << id << " started execution" << endl;
     int random_db, random_op, random_user;
 
-    for (int operation_count = 0; operation_count < NUM_OPERATIONS; operation_count++) {
+    for (int operation_count = 0; operation_count < NUM_OPERATIONS; operation_count++)
+    {
 
         // TODO: not uniformly random
         random_db = rand() % NUM_DATABASE;
-        random_op = rand() % OP_CNT;   
+        random_op = rand() % OP_CNT;
         random_user = rand() % NUM_USERS;
 
         row_op(users[random_user], to_string(rand()), random_db, random_op);
@@ -240,22 +305,27 @@ void thread_function_start(int id){
     cout << "Thread " << id << " done" << endl;
 }
 
-int main(){
+int main()
+{
     // initialize random users
     int start_id = rand() / 2;
-    for (int i = 0; i < NUM_USERS; i++) {
+    for (int i = 0; i < NUM_USERS; i++)
+    {
         users[i] = to_string(start_id + i);
     }
 
-    for (int i = 0; i < NUM_THREADS; i++) {
+    for (int i = 0; i < NUM_THREADS; i++)
+    {
         threads[i] = thread(thread_function_start, i);
     }
 
-    for (int i = 0; i < NUM_THREADS; i++) {
+    for (int i = 0; i < NUM_THREADS; i++)
+    {
         threads[i].join();
     }
 
-    for (int i = 0; i < NUM_THREADS; i++) {
+    for (int i = 0; i < NUM_THREADS; i++)
+    {
         total_mongo_reads += op_counts[0][0][i];
         total_mongo_inserts += op_counts[0][1][i];
         total_mongo_updates += op_counts[0][2][i];
@@ -284,16 +354,21 @@ int main(){
     cout << setw(25) << left << "Total sql_updates " << total_sql_updates << endl;
     cout << setw(25) << left << "Total sql_dels " << total_sql_dels << endl;
 
-    cout << setw(25) << left << "Total operations " << total_mongo_reads + total_mongo_inserts + total_mongo_updates + total_mongo_dels + total_kv_reads + total_kv_inserts + total_kv_updates + total_kv_dels + total_sql_dels + total_sql_inserts + total_sql_reads + total_sql_updates << endl;
+    int total_mongo = total_mongo_reads + total_mongo_inserts + total_mongo_updates + total_mongo_dels;
+    int total_kv = total_kv_reads + total_kv_inserts + total_kv_updates + total_kv_dels;
+    int total_sql = total_sql_reads + total_sql_inserts + total_sql_updates + total_sql_dels;
+    cout << setw(25) << left << "Total operations " << total_mongo + total_kv + total_sql << endl;
 
     cout << "Before nuke: " << endl;
-    for (size_t i = 0; i < NUM_DATABASE; i++) {
+    for (size_t i = 0; i < NUM_DATABASE; i++)
+    {
         cout << database_maps[i].user_to_row.size() << " " << database_maps[i].row_to_user.size() << endl;
     }
-    
 
-    for (size_t i = 0; i < NUM_DATABASE; i++) {
-        for (int j = 0; j < NUM_USERS; j++) {
+    for (size_t i = 0; i < NUM_DATABASE; i++)
+    {
+        for (int j = 0; j < NUM_USERS; j++)
+        {
             nuke(users[j], i);
         }
     }
@@ -303,7 +378,8 @@ int main(){
     // ideally we should see all zeroes
     // but note that we use non concurrent maps
     cout << "After nuke: " << endl;
-    for (size_t i = 0; i < NUM_DATABASE; i++) {
+    for (size_t i = 0; i < NUM_DATABASE; i++)
+    {
         cout << database_maps[i].user_to_row.size() << " " << database_maps[i].row_to_user.size() << endl;
     }
 }
