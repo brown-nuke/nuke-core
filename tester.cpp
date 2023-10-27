@@ -71,43 +71,6 @@ int sql_dels[NUM_THREADS];
 
 ////////////////////////
 ////////////////////////
-unordered_map<string, string> parse_schema(const string& filename) {
-    unordered_map<string, string> databaseMap;
-
-    std::ifstream file(filename);
-    if (!file.is_open()) {
-        std::cerr << "Error opening schema file: " << filename << std::endl;
-        return databaseMap;
-    }
-}
-
-std::unordered_map<std::string, std::string> createDatabaseMap(const std::string& filename) {
-    std::unordered_map<std::string, std::string> databaseMap;
-
-    // Open the file
-    
-
-    std::string line;
-    while (std::getline(file, line)) {
-        // Assuming the file format is something like "database_name primary_key"
-        std::istringstream iss(line);
-        std::string databaseName, primaryKey;
-
-        if (iss >> databaseName >> primaryKey) {
-            // Insert the pair into the unordered_map
-            databaseMap[databaseName] = primaryKey;
-        } else {
-            // Handle parsing error
-            std::cerr << "Error parsing line: " << line << std::endl;
-        }
-    }
-
-    // Close the file
-    file.close();
-
-    return databaseMap;
-}
-
 
 
 void thread_function_start(int id){
@@ -172,7 +135,7 @@ void thread_function_start(int id){
 
 int main(){
     // initialize random users
-    int start_id = rand();
+    int start_id = rand() / 2;
     for (int i = 0; i < NUM_USERS; i++) {
         users[i] = to_string(start_id + i);
     }
