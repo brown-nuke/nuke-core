@@ -4,12 +4,15 @@
 #include <fstream>
 
 #include <thread>
+#include <mutex>
 #include <utility>
 
 #include <unordered_map>
 #include <vector>
 #include <set>
 #include <algorithm>
+
+#include <boost/container/flat_map.hpp>
 
 #define NUM_USERS 100
 #define NUM_OPERATIONS 10
@@ -22,11 +25,14 @@
 using namespace std;
 
 thread threads[NUM_THREADS];
+std::mutex accessTo;
 
 struct database_mapping_struct
 {
-    unordered_map<string, vector<string>> user_to_row; // TODO: Concurrent Map! or use persisted KV store
-    unordered_map<string, vector<string>> row_to_user;
+    // unordered_map<string, vector<string>> user_to_row; // TODO: Concurrent Map! or use persisted KV store
+    // unordered_map<string, vector<string>> row_to_user;
+    boost::container::flat_map<string, vector<string>> user_to_row; // TODO: Concurrent Map! or use persisted KV store
+    boost::container::flat_map<string, vector<string>> row_to_user;
 };
 
 // user id to how many times nuked
@@ -162,6 +168,7 @@ bool ownership_update_add(string user_id, string row_id, int database_id)
         return false;
     }
 
+    std::lock_guard<std::mutex> lock(accessTo);
     database_maps[database_id].user_to_row[user_id].push_back(row_id);
     database_maps[database_id].row_to_user[row_id].push_back(user_id);
 
