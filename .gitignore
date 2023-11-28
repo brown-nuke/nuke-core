@@ -38,3 +38,9 @@ Thumbs.db
 .vscode/
 cmake-build-debug/
 .idea/
+
+# Python #
+##########
+venv/
+build/
+__pycache__/
