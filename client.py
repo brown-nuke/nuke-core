@@ -2,8 +2,16 @@ import cmd
 import tempfile
 import pyfiglet
 import sqlite3
+import nuke
 
 from subprocess import call
+
+# Database Map
+# 0 -> Redis
+# 1 -> 
+# 2 -> 
+
+redis_client = nuke.database_maps[0] 
 
 class Query():
     def __init__(self, con, cursor):
@@ -22,8 +30,11 @@ class Community():
         self.name = name
 
 class NukedItClient(cmd.Cmd):
-   intro = 'Welcome to the NukedIt shell. Type help or ? to list commands.\n'
-
+   intro = '\033[0m' + 'Welcome to the NukedIt shell. Type help or ? to list commands.\n'
+   print("Please login.")
+   username = input('\033[35m' + "[Username] : ")
+   password = input('\033[35m' + "[Password] : ")
+   
    con = sqlite3.connect("nukedit.db")
    cur = con.cursor()
 
