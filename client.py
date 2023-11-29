@@ -31,9 +31,36 @@ class Community():
 
 class NukedItClient(cmd.Cmd):
    intro = '\033[0m' + 'Welcome to the NukedIt shell. Type help or ? to list commands.\n'
-   print("Please login.")
-   username = input('\033[35m' + "[Username] : ")
-   password = input('\033[35m' + "[Password] : ")
+   success = False
+   while not success:
+    print("\033[0m" + "====================================")
+    print("\033[92m" + "Do you have an account?")
+    answer = input("\033[96m" + "[Y/N] : ")
+    print()
+    if "y" in answer.strip().lower():
+        print("\033[92m" + "Please login.")
+        username = input("\033[0m" + "[Username] : ")
+        password = input("\033[0m" + "[Password] : ")
+        account_exists = redis_client.exists(username)
+        if account_exists:
+            get_password = redis_client.get(username)
+            if get_password == password:
+                print("\033[92m" + "Login Success.")
+                success = True
+            else:
+                print("\033[91m" +  "Login Failed.")
+        else:
+            print("\033[91m" + "Login Failed.")
+    else:
+        print("\033[92m" + "Create Account.")
+        username = input('\033[0m' + "[Username] : ")
+        account_exists = redis_client.exists(username)
+        if account_exists:
+            print("\033[91m" + "Username already taken. Try again.")
+        else:
+            password = input('\033[0m' + "[Password] : ")
+            redis_client.set(username, password)
+    print()
    
    con = sqlite3.connect("nukedit.db")
    cur = con.cursor()
