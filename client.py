@@ -16,27 +16,9 @@ import nuke
 redis_client = nuke.database_maps[0]
 
 
-class Query:
-    def __init__(self, con, cursor):
-        self.con = con
-        self.cursor = cursor
-
-    def query_posts(self, comm_name):
-        select_query = "SELECT post_id, title FROM {};".format(comm_name)
-        self.cursor.execute(select_query)
-        rows = self.cursor.fetchall()
-        rows = [r + (0, 0) for r in rows]
-        return rows[::-1]
-
-
-class Community:
-    def __init__(self, name):
-        self.name = name
-
-
-class NukedItClient(cmd.Cmd):
+class NukeditClient(cmd.Cmd):
     intro = (
-        "\033[0m" + "Welcome to the NukedIt shell. Type help or ? to list commands.\n"
+        "\033[0m" + "Welcome to the Nukedit shell. Type help or ? to list commands.\n"
     )
     success = False
     username = None
@@ -73,11 +55,9 @@ class NukedItClient(cmd.Cmd):
     con = sqlite3.connect("nukedit.db")
     cur = con.cursor()
     mongo_client = MongoClient(uuidRepresentation="standard")
-    mongo_db = mongo_client["nukedit3"]
+    mongo_db = mongo_client["nukedit"]
 
-    server = Query(con, cur)
-
-    DEFAULT_HOMEPAGE = "NukedIt Homepage"
+    DEFAULT_HOMEPAGE = "Nukedit Homepage"
     current_location = DEFAULT_HOMEPAGE
 
     # ----- basic commands -----
@@ -129,8 +109,8 @@ class NukedItClient(cmd.Cmd):
                         + " "
                         + str(post["title"])
                     )
-            except:
-                print("This community cannot be found on NukedIt.")
+            except:  # noqa: E722
+                print("This community cannot be found on Nukedit.")
             print()
             print()
 
@@ -231,4 +211,4 @@ def parse(arg):
 
 
 if __name__ == "__main__":
-    NukedItClient().cmdloop()
+    NukeditClient().cmdloop()
