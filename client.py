@@ -10,8 +10,8 @@ import nuke
 
 # Database Map
 # 0 -> Redis
-# 1 ->
-# 2 ->
+# 1 -> MongoDB
+# 2 -> SQLite
 
 redis_client = nuke.database_maps[0]
 
@@ -101,7 +101,12 @@ class NukedItClient(cmd.Cmd):
             self.set_community(*parse(arg))
 
     def do_comment(self, arg):
+        "Comment on a post like: comment <post_id>"
         self.create_comment(*parse(arg))
+
+    def do_reset(self, arg):
+        "Reset all of the databases. Used for testing purposes."
+        self.reset(self, *parse(arg))
 
         # ----- function  -----
 
@@ -207,6 +212,18 @@ class NukedItClient(cmd.Cmd):
                 (self.username, comment_text),
             )
             self.con.commit()
+
+    def reset(self, *args):
+        for table in self.cur.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        ):
+            table_name = table[0]
+            if table_name != "sqlite_sequence":
+                self.cur.execute(f"DROP TABLE {table[0]}")
+        redis_client.flushall()
+        self.mongo_client.drop_database("nukedit")
+
+        exit()
 
 
 def parse(arg):
