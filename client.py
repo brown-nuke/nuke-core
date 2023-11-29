@@ -1,20 +1,23 @@
 import cmd
-import tempfile
-import pyfiglet
 import sqlite3
+import tempfile
+from subprocess import call
+
+import pyfiglet
+from pymongo import MongoClient
+
 import uuid
 import nuke
 
-from subprocess import call
-
 # Database Map
 # 0 -> Redis
-# 1 -> 
-# 2 -> 
+# 1 ->
+# 2 ->
 
-redis_client = nuke.database_maps[0] 
+redis_client = nuke.database_maps[0]
 
-class Query():
+
+class Query:
     def __init__(self, con, cursor):
         self.con = con
         self.cursor = cursor
@@ -23,12 +26,14 @@ class Query():
         select_query = "SELECT post_id, title FROM {};".format(comm_name)
         self.cursor.execute(select_query)
         rows = self.cursor.fetchall()
-        rows = [r + (0,0) for r in rows]
+        rows = [r + (0, 0) for r in rows]
         return rows[::-1]
 
-class Community():
+
+class Community:
     def __init__(self, name):
         self.name = name
+
 
 class NukedItClient(cmd.Cmd):
    intro = '\033[0m' + 'Welcome to the NukedIt shell. Type help or ? to list commands.\n'
@@ -66,31 +71,33 @@ class NukedItClient(cmd.Cmd):
    
    con = sqlite3.connect("nukedit.db")
    cur = con.cursor()
+   mongo_client = MongoClient(uuidRepresentation="standard")
+   mongo_db = mongo_client["nukedit2"]
 
-   server = Query(con, cur)
+    server = Query(con, cur)
 
-   DEFAULT_HOMEPAGE = "NukedIt Homepage"
-   current_location = DEFAULT_HOMEPAGE
+    DEFAULT_HOMEPAGE = "NukedIt Homepage"
+    current_location = DEFAULT_HOMEPAGE
 
-   # ----- basic commands -----
-   def do_ls(self, arg):
-       'Show posts in the sub: ls'
-       self.get_list(*parse(arg))
+    # ----- basic commands -----
+    def do_ls(self, arg):
+        "Show posts in the sub: ls"
+        self.get_list(*parse(arg))
 
-   def do_cat(self, arg):
-       'Move to a different <post_id>'
-       self.get_post(*parse(arg))
+    def do_cat(self, arg):
+        "Move to a different <post_id>"
+        self.get_post(*parse(arg))
 
-   def do_mkpost(self, arg):
-       'Create a post with VIM editor'
-       self.create_post(*parse(arg))
-    
-   def do_cd(self, arg):
-       'Move to a different <commmunity_id>'
-       if len(arg) == 0:
-           self.current_location = self.DEFAULT_HOMEPAGE
-       else:
-           self.set_community(*parse(arg))
+    def do_mkpost(self, arg):
+        "Create a post with VIM editor"
+        self.create_post(*parse(arg))
+
+    def do_cd(self, arg):
+        "Move to a different <commmunity_id>"
+        if len(arg) == 0:
+            self.current_location = self.DEFAULT_HOMEPAGE
+        else:
+            self.set_community(*parse(arg))
 
    def do_comment(self, arg):
        self.create_comment(*parse(arg))
@@ -99,40 +106,53 @@ class NukedItClient(cmd.Cmd):
        'Create a community <community_id>'
        self.create_community(*parse(arg))
 
-   # ----- function  -----
-   def get_list(self, *args):
-       if str(self.current_location) == self.DEFAULT_HOMEPAGE:
+    # ----- function  -----
+    def get_list(self, *args):
+        if str(self.current_location) == self.DEFAULT_HOMEPAGE:
             print(pyfiglet.figlet_format(str(self.current_location)))
-       else: 
-        try:
-            list_of_posts = self.server.query_posts(self.current_location)
-            print(pyfiglet.figlet_format(str(self.current_location)))
-            for post, title, upvote, downvote in list_of_posts:
-                print("<" + str(post)+ ">" + " ↑" + str(upvote) + " ↓" + str(downvote) + " " + str(title))
-        except:
-            print("This community cannot be found on NukedIt.")
-        print()
-        print()
+        else:
+            try:
+                list_of_posts = self.mongo_db[self.current_location].find()
+                print(pyfiglet.figlet_format(str(self.current_location)))
+                for post in list_of_posts:
+                    print(
+                        "<"
+                        + str(post["_id"])
+                        + ">"
+                        + " ↑"
+                        + str(0)
+                        + " ↓"
+                        + str(0)
+                        + " "
+                        + str(post["title"])
+                    )
+            except:
+                print("This community cannot be found on NukedIt.")
+            print()
+            print()
 
-   def set_community(self, *args):
+    def set_community(self, *args):
         self.current_location = args[0]
 
-   def create_community(self, *args):
+    def create_community(self, *args):
         cm = Community(args[0])
         community_name = cm.name
 
-        self.cur.execute('''
+        self.cur.execute(
+            """
         CREATE TABLE IF NOT EXISTS {} (
         post_id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT,
         content TEXT
         )
-        '''.format(community_name))
+        """.format(community_name)
+        )
 
-   def get_post(self, *args):
-        select_query = "SELECT content FROM {} WHERE post_id = ?;".format(self.current_location)
-        self.cur.execute(select_query, (args[0],))
-        result = self.cur.fetchone()
+    def get_post(self, *args):
+        post_collection = self.mongo_db[self.current_location]
+        post = post_collection.find_one({"_id": int(args[0])})
+        print(post["title"])
+        print(post["content"])
 
         read_comment = "SELECT * FROM {}".format(self.current_location + str(args[0]))
         self.cur.execute(read_comment)
@@ -141,9 +161,8 @@ class NukedItClient(cmd.Cmd):
         for c in comments:
             print(c[1] + ": " + c[2])
 
-   def create_post(self, *args):
-        enter_text = b"Create post ..." # if you want to set up the file somehow
-        post_id = str(uuid.uuid4())
+    def create_post(self, *args):
+        enter_text = b"Create post ..."  # if you want to set up the file somehow
         with tempfile.NamedTemporaryFile(suffix=".tmp") as tf:
             tf.write(enter_text)
             tf.flush()
@@ -156,10 +175,16 @@ class NukedItClient(cmd.Cmd):
             post_text = edited_message.decode("utf-8")
 
             # for some reason it's not saving text.
-            self.cur.execute("INSERT INTO {} (title, content) VALUES (?, ?)".format(self.current_location), (title, post_text,))
 
-            # Commit the transaction
-            self.con.commit()
+            post_collerction = self.mongo_db[self.current_location]
+            id = post_collerction.insert_one(
+                {
+                    "_id": redis_client.incr("post_id"),
+                    "title": title,
+                    "content": post_text,
+                }
+            ).inserted_id
+            print(id)
 
         comment_thread = str(self.current_location + str(self.cur.lastrowid))
         print(comment_thread)
@@ -187,7 +212,8 @@ class NukedItClient(cmd.Cmd):
             self.con.commit()
 
 def parse(arg):
-   return tuple(map(str, arg.split()))
+    return tuple(map(str, arg.split()))
 
-if __name__ == '__main__':
-   NukedItClient().cmdloop()
+
+if __name__ == "__main__":
+    NukedItClient().cmdloop()
