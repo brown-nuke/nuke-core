@@ -1,4 +1,4 @@
-# NukedIt Client
+# Nukedit Client
 
 This is a command-line social media platform.
 
@@ -6,7 +6,7 @@ This is a command-line social media platform.
 ```
 python3 -m venv venv
 source ./venv/bin/activate
-pip install pyfiglet
+pip install pyfiglet redis pymongo
 ```
 
 #### Docker (for Redis):
@@ -15,6 +15,11 @@ curl https://get.docker.com | sh && sudo systemctl --now enable docker
 sudo ./start_redis.sh
 ```
 
+#### Mongodb
+Please install and run mongodb following instructions here:
+```
+https://www.mongodb.com/docs/manual/administration/install-community/
+```
 
 #### Vim (for editing posts)
 ```
@@ -35,17 +40,15 @@ ls
 
 Make a post.
 ```
-mkpost
+post
 ```
 
-
-Read a post.
+Read a post and its comments.
 ```
 cat <post_id>
 ```
 
-
-Make a community
+Comment
 ```
-mkcomm <community_name>
+comment <cpost_id>
 ```
