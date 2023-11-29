@@ -2,6 +2,7 @@ import cmd
 import tempfile
 import pyfiglet
 import sqlite3
+import uuid
 import nuke
 
 from subprocess import call
@@ -32,6 +33,7 @@ class Community():
 class NukedItClient(cmd.Cmd):
    intro = '\033[0m' + 'Welcome to the NukedIt shell. Type help or ? to list commands.\n'
    success = False
+   username = None
    while not success:
     print("\033[0m" + "====================================")
     print("\033[92m" + "Do you have an account?")
@@ -45,10 +47,10 @@ class NukedItClient(cmd.Cmd):
         if account_exists:
             get_password = redis_client.get(username)
             if get_password == password:
-                print("\033[92m" + "Login Success.")
+                print("\033[92m" + "\nLogin Success.")
                 success = True
             else:
-                print("\033[91m" +  "Login Failed.")
+                print("\033[91m" +  "\nLogin Failed.")
         else:
             print("\033[91m" + "Login Failed.")
     else:
@@ -82,13 +84,16 @@ class NukedItClient(cmd.Cmd):
    def do_mkpost(self, arg):
        'Create a post with VIM editor'
        self.create_post(*parse(arg))
-
+    
    def do_cd(self, arg):
        'Move to a different <commmunity_id>'
        if len(arg) == 0:
            self.current_location = self.DEFAULT_HOMEPAGE
        else:
            self.set_community(*parse(arg))
+
+   def do_comment(self, arg):
+       self.create_comment(*parse(arg))
 
    def do_mkcomm(self, arg):
        'Create a community <community_id>'
@@ -128,10 +133,17 @@ class NukedItClient(cmd.Cmd):
         select_query = "SELECT content FROM {} WHERE post_id = ?;".format(self.current_location)
         self.cur.execute(select_query, (args[0],))
         result = self.cur.fetchone()
+
+        read_comment = "SELECT * FROM {}".format(self.current_location + str(args[0]))
+        self.cur.execute(read_comment)
+        comments = self.cur.fetchall()
         print(result[0])
+        for c in comments:
+            print(c[1] + ": " + c[2])
 
    def create_post(self, *args):
         enter_text = b"Create post ..." # if you want to set up the file somehow
+        post_id = str(uuid.uuid4())
         with tempfile.NamedTemporaryFile(suffix=".tmp") as tf:
             tf.write(enter_text)
             tf.flush()
@@ -144,12 +156,35 @@ class NukedItClient(cmd.Cmd):
             post_text = edited_message.decode("utf-8")
 
             # for some reason it's not saving text.
-
             self.cur.execute("INSERT INTO {} (title, content) VALUES (?, ?)".format(self.current_location), (title, post_text,))
 
             # Commit the transaction
             self.con.commit()
 
+        comment_thread = str(self.current_location + str(self.cur.lastrowid))
+        print(comment_thread)
+        create_comment_thread = '''
+            CREATE TABLE IF NOT EXISTS {} (
+                comment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user TEXT,
+                content TEXT
+            )
+        '''.format(comment_thread)
+        self.cur.execute(create_comment_thread)
+
+
+   def create_comment(self, *args):
+        enter_text = b"Comment ..."
+        with tempfile.NamedTemporaryFile(suffix=".tmp") as tf:
+            tf.write(enter_text)
+            tf.flush()
+            call(["vim", "+set backupcopy=yes", tf.name])
+
+            tf.seek(0)
+            edited_message = tf.read()
+            comment_text= edited_message.decode("utf-8")
+            self.cur.execute("INSERT INTO {} (user, content) VALUES (?, ?)".format(self.current_location + str(args[0])), (self.username, comment_text))
+            self.con.commit()
 
 def parse(arg):
    return tuple(map(str, arg.split()))
