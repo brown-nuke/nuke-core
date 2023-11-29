@@ -9,7 +9,14 @@ source ./venv/bin/activate
 pip install pyfiglet
 ```
 
-We use vim to modify posts. 
+#### Docker (for Redis):
+```
+curl https://get.docker.com | sh && sudo systemctl --now enable docker
+sudo ./start_redis.sh
+```
+
+
+#### Vim (for editing posts)
 ```
 sudo apt-get install vim
 ```
