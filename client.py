@@ -4,16 +4,14 @@ import tempfile
 from subprocess import call
 
 import pyfiglet
+import redis
 from pymongo import MongoClient
 
 import nuke
 
-# Database Map
 # 0 -> Redis
 # 1 -> MongoDB
 # 2 -> SQLite
-
-redis_client = nuke.database_maps[0]
 
 
 class NukeditClient(cmd.Cmd):
@@ -22,6 +20,15 @@ class NukeditClient(cmd.Cmd):
     )
     success = False
     username = None
+
+    sqlite_con = sqlite3.connect("nukedit.db")
+    sqlite_cur = sqlite_con.cursor()
+
+    mongo_client = MongoClient()
+    mongo_db = mongo_client["nukedit"]
+
+    redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
     while not success:
         print("\033[0m" + "====================================")
         print("\033[92m" + "Do you have an account?")
@@ -49,13 +56,11 @@ class NukeditClient(cmd.Cmd):
                 print("\033[91m" + "Username already taken. Try again.")
             else:
                 password = input("\033[0m" + "[Password] : ")
-                redis_client.set(username, password)
+                if nuke.nuke_ownership_update_add(username, 0, 0, username):
+                    redis_client.set(username, password)
+                else:
+                    print("\033[91m" + "Account is going to be nuked.")
         print()
-
-    con = sqlite3.connect("nukedit.db")
-    cur = con.cursor()
-    mongo_client = MongoClient(uuidRepresentation="standard")
-    mongo_db = mongo_client["nukedit"]
 
     DEFAULT_HOMEPAGE = "Nukedit Homepage"
     current_location = DEFAULT_HOMEPAGE
@@ -87,6 +92,10 @@ class NukeditClient(cmd.Cmd):
     def do_reset(self, arg):
         "Reset all of the databases. Used for testing purposes."
         self.reset(self, *parse(arg))
+
+    def do_nuke(self, arg):
+        "Nuke user data"
+        nuke.nuke(self.username)
 
         # ----- function  -----
 
@@ -124,8 +133,8 @@ class NukeditClient(cmd.Cmd):
         print(post["content"])
 
         read_comment = "SELECT * FROM {}".format(self.current_location + str(args[0]))
-        self.cur.execute(read_comment)
-        comments = self.cur.fetchall()
+        self.sqlite_cur.execute(read_comment)
+        comments = self.sqlite_cur.fetchall()
         for c in comments:
             print(c[1] + ": " + c[2])
 
@@ -144,36 +153,33 @@ class NukeditClient(cmd.Cmd):
 
             # for some reason it's not saving text.
 
-            post_id = redis_client.incr("post_id")
-            post_collerction = self.mongo_db[self.current_location]
-            post_collerction.insert_one(
+            post_id = self.redis_client.incr("post_id")
+            post_collection = self.mongo_db[self.current_location]
+
+            if not nuke.nuke_ownership_update_add(
+                self.username, 1, self.current_location, post_id
+            ):
+                print("Account is going to be nuked.")
+                return
+
+            post_collection.insert_one(
                 {
                     "_id": post_id,
                     "title": title,
                     "content": post_text,
                 }
-            ).inserted_id
+            )
 
             comment_thread = str(self.current_location + str(post_id))
-            create_comment_thread = """
-                CREATE TABLE IF NOT EXISTS {} (
-                    comment_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            create_comment_thread = f"""
+                CREATE TABLE IF NOT EXISTS {comment_thread} (
+                    comment_id INTEGER PRIMARY KEY,
                     user TEXT,
                     content TEXT
                 )
-            """.format(comment_thread)
-            self.cur.execute(create_comment_thread)
+            """
 
-        comment_thread = str(self.current_location + str(self.cur.lastrowid))
-        print(comment_thread)
-        create_comment_thread = """
-            CREATE TABLE IF NOT EXISTS {} (
-                comment_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user TEXT,
-                content TEXT
-            )
-        """.format(comment_thread)
-        self.cur.execute(create_comment_thread)
+            self.sqlite_cur.execute(create_comment_thread)
 
     def create_comment(self, *args):
         enter_text = b"Comment ..."
@@ -185,22 +191,30 @@ class NukeditClient(cmd.Cmd):
             tf.seek(0)
             edited_message = tf.read()
             comment_text = edited_message.decode("utf-8")
-            self.cur.execute(
-                "INSERT INTO {} (user, content) VALUES (?, ?)".format(
-                    self.current_location + str(args[0])
-                ),
-                (self.username, comment_text),
+
+            comment_thread = self.current_location + str(args[0])
+            comment_id = self.redis_client.incr(f"comment_id:post_id={str(args[0])}")
+
+            if not nuke.nuke_ownership_update_add(
+                self.username, 2, comment_thread, comment_id
+            ):
+                print("Account is going to be nuked.")
+                return
+
+            self.sqlite_cur.execute(
+                f"INSERT INTO {comment_thread} (comment_id, user, content) VALUES (?, ?, ?)",
+                (comment_id, self.username, comment_text),
             )
-            self.con.commit()
+            self.sqlite_con.commit()
 
     def reset(self, *args):
-        for table in self.cur.execute(
+        for table in self.sqlite_cur.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         ):
             table_name = table[0]
             if table_name != "sqlite_sequence":
-                self.cur.execute(f"DROP TABLE {table[0]}")
-        redis_client.flushall()
+                self.sqlite_cur.execute(f"DROP TABLE {table[0]}")
+        self.redis_client.flushall()
         self.mongo_client.drop_database("nukedit")
 
         exit()
