@@ -11,7 +11,7 @@ r = redis.Redis(host="localhost", port=6379, db=1, decode_responses=True)
 user_prefix = "u:"
 row_prefix = "r:"
 
-sqlite_con = sqlite3.connect("nukedit.db", check_same_thread=False)
+sqlite_con = sqlite3.connect("correctness_test.db", check_same_thread=False)    # Problematic for application-agnosticism
 sqlite_cur = sqlite_con.cursor()
 mongo_db = MongoClient()["nukedit"]
 redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
@@ -23,8 +23,8 @@ def nuke_ownership_update_add(user_id, database_id, table_id, row_id):
     if user_id in r.smembers(users_to_nuke):
         return False
 
-    r.sadd(user_prefix + user_id, merged_row_id)
-    r.sadd(row_prefix + merged_row_id, user_id)
+    r.sadd(user_prefix + str(user_id), merged_row_id)
+    r.sadd(row_prefix + str(merged_row_id), user_id)
 
     return True
 
@@ -56,7 +56,8 @@ def delete_row(merged_row_id):
     elif database_id == "1":
         mongo_db[table_id].delete_one({"_id": int(row_id)})
     elif database_id == "2":
-        sqlite_cur.execute(f"DELETE FROM {table_id} WHERE comment_id = {int(row_id)};")
+        # Problematic for application-agnosticism!!
+        sqlite_cur.execute(f"DELETE FROM correctness_test WHERE id = {int(row_id)};")
         sqlite_con.commit()
 
 

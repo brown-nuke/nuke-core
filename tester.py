@@ -1,4 +1,3 @@
-# from nuke_core.py import nuke_ownership_add, nuke_ownership_remove, nuke, do_nuke
 import multiprocessing
 import string
 import time
@@ -8,11 +7,11 @@ import random
 import redis
 import sqlite3
 from pymongo import MongoClient
+from nuke import nuke_ownership_update_add, nuke
 
 
 operations = ["mongo_read", "mongo_insert", "mongo_update", "mongo_del", "kv_read", 
               "kv_insert", "kv_update", "kv_del", "sql_read", "sql_insert", "sql_update", "sql_del"]
-users = [None]
 
 def random_string(length):
     letters = string.ascii_letters
@@ -48,18 +47,17 @@ def thread_function_start(thread_id, queue, NUM_OPERATIONS, NUM_USERS, nuke_flag
 
     # Should each thread establish a seperate connection to DBs?
     con = sqlite3.connect("throughput_sql.db")
+    con.execute("PRAGMA busy_timeout = 60000")  # because threads hold the lock, making the experiment fail
     cursor = con.cursor()
 
     mongo_client = MongoClient()
     mongo_db = mongo_client["throughput_mongo"]
 
-    redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+    redis_client = redis.Redis(host="localhost", port=6379, db=9, decode_responses=True)
 
     thread_result = {"kv_read": 0, "kv_insert": 0, "kv_update": 0, "kv_del": 0, "sql_read": 0, "sql_insert": 0,
                      "sql_update": 0, "sql_del": 0, "mongo_read": 0, "mongo_insert": 0, "mongo_update": 0, "mongo_del": 0}
-    mongo_ids = []
-    sql_ids = []
-    kv_ids = []
+    
     prev_ids = [thread_id * NUM_OPERATIONS + 1, thread_id * NUM_OPERATIONS + 1, thread_id * NUM_OPERATIONS + 1]
 
     # TODO: Preload database here
@@ -70,7 +68,7 @@ def thread_function_start(thread_id, queue, NUM_OPERATIONS, NUM_USERS, nuke_flag
 
     for i in range(NUM_OPERATIONS):
         random_db = random.randint(0, 2)
-        random_op = random.randint(0, 3)
+        random_op = random.choices([0, 1, 2, 3], weights=[95, 2.5, 2.5, 0], k=1)[0]
 
         if random_op == 1:  # if insert
             random_id = prev_ids[random_db] + 1
@@ -99,9 +97,9 @@ def do_operation(random_id, random_op, random_db, redis_client, cursor, mongo_db
         if random_op == 0:
             db_read(random_id, random_db, redis_client, cursor, mongo_db)
         elif random_op == 1:
-            # TODO: multiple owners? - must do for correctness
-            # nuke_ownership_update_add(random.randint(0, NUM_USERS), random_id, random_db)
-            db_insert(random_id, random_db, redis_client, cursor, mongo_db)
+            # TODO: multiple owners? - must do for correctness, maybe for throuhgput?
+            if nuke_ownership_update_add(random_id, random_db, 0, random_id):
+                db_insert(random_id, random_db, redis_client, cursor, mongo_db)
         elif random_op == 2:
             db_update(random_id, random_db, redis_client, cursor, mongo_db)
         elif random_op == 3:
@@ -144,14 +142,13 @@ def main():
     mongo_db = mongo_client["throughput_mongo"]
     mongo_db.main.delete_many({})
 
-    
     cur.execute('''
         CREATE TABLE IF NOT EXISTS throughput_test (
         id INTEGER PRIMARY KEY,
         content TEXT
                 );''')
     
-    redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+    redis_client = redis.Redis(host="localhost", port=6379, db=9, decode_responses=True)
     redis_client.flushall()
 
     queue = multiprocessing.Queue()
@@ -165,7 +162,7 @@ def main():
         thread_pool.append(thread)
 
     for thread in thread_pool:
-        print(queue.get())
+        # print(queue.get())
         thread.join()
     
     end_time = time.time()
@@ -173,6 +170,7 @@ def main():
     # cleanup DBs
     cur.execute("DROP TABLE IF EXISTS throughput_test;")
     redis_client.flushall()
+    mongo_db.main.delete_many({})
 
     # print the execution time
     execution_time = end_time - start_time
@@ -182,32 +180,7 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-"""
-if args.nuke:
-        print("nuking")
-    else:
-        print("normalling")
-
-
-def perform_database_operation(operation_id):
-    # Connect to the database
-    conn = sqlite3.connect('your_database.db')
-    cursor = conn.cursor()
-
-    # Perform the database operation
-    # Replace this with your actual database operation code
-    time.sleep(1)  # Simulating some database operation
-
-    # Close the database connection
-    conn.close()
-
-    # Return the result of the operation
-    return f"Operation {operation_id} completed"
-"""
-
-# testing for multiprocessing
-
+# debugging helpers
 def print_table(cursor):
     cursor.execute("SELECT * FROM throughput_test")
     rows = cursor.fetchall()
