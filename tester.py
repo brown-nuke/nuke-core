@@ -9,8 +9,9 @@ import sqlite3
 from pymongo import MongoClient
 from nuke import nuke_ownership_update_add, nuke
 
-operations = ["mongo_read", "mongo_insert", "mongo_update", "mongo_del", "kv_read", 
-              "kv_insert", "kv_update", "kv_del", "sql_read", "sql_insert", "sql_update", "sql_del"]
+# operations = ["mongo_read", "mongo_insert", "mongo_update", "mongo_del", "kv_read", 
+#               "kv_insert", "kv_update", "kv_del", "sql_read", "sql_insert", "sql_update", "sql_del"]
+operations = ["read", "insert", "update", "delete"]
 
 def random_string(length):
     letters = string.ascii_letters
@@ -48,8 +49,8 @@ def db_delete(row_id, db_id, redis_client, cursor, mongo_db):
     elif db_id == 2:    # mongo
         mongo_db.main.delete_one({"_id": row_id})
 
-def thread_function_start(thread_id, queue, NUM_OPERATIONS, PRELOAD, nuke_flag):
-    print(f'Thread {thread_id} started execution...')
+def thread_function_start(thread_id, queue, NUM_OPERATIONS, PRELOAD, nuke_flag, weights, latency_test):
+    # print(f'Thread {thread_id} started execution...')
 
     # SQLite3 initalized per operation later for concurrent access
     mongo_client = MongoClient()
@@ -57,15 +58,15 @@ def thread_function_start(thread_id, queue, NUM_OPERATIONS, PRELOAD, nuke_flag):
 
     redis_client = redis.Redis(host="localhost", port=6379, db=9, decode_responses=True)
 
-    thread_result = {"kv_read": 0, "kv_insert": 0, "kv_update": 0, "kv_del": 0, "sql_read": 0, "sql_insert": 0,
-                     "sql_update": 0, "sql_del": 0, "mongo_read": 0, "mongo_insert": 0, "mongo_update": 0, "mongo_del": 0}
+    thread_result = {"read": 0, "insert": 0, "update": 0, "delete": 0,
+                     "read_latency": 0, "insert_latency": 0, "update_latency": 0, "delete_latency": 0}
     
     prev_ids = [thread_id * NUM_OPERATIONS + PRELOAD, thread_id * NUM_OPERATIONS + PRELOAD, thread_id * NUM_OPERATIONS + PRELOAD]
     first_ids = [thread_id * NUM_OPERATIONS, thread_id * NUM_OPERATIONS, thread_id * NUM_OPERATIONS] # sliding id window for deletions
     
     for i in range(NUM_OPERATIONS):
         random_db = random.randint(0, 2)
-        random_op = random.choices([0, 1, 2, 3], weights=[95, 2.5, 2.5, 0], k=1)[0]
+        random_op = random.choices([0, 1, 2, 3], weights=[95, 3, 2, 1], k=1)[0]
 
         if random_op == 1:  # if insert
             random_id = prev_ids[random_db]
@@ -76,14 +77,21 @@ def thread_function_start(thread_id, queue, NUM_OPERATIONS, PRELOAD, nuke_flag):
         else:
             random_id = random.randint(first_ids[random_db], prev_ids[random_db] - 1)
             
-        operation = operations[random_db * 4 + random_op]
+        operation = operations[random_op]
         
-        do_operation(random_id, random_op, random_db, redis_client, mongo_db, nuke_flag)
+        if latency_test:
+            start_time = time.time()
+            do_operation(random_id, random_op, random_db, redis_client, mongo_db, nuke_flag)
+            end_time = time.time()
 
-        thread_result[operation] += 1
+            latency = end_time - start_time
+            thread_result[operation] += 1
+            thread_result[f"{operation}_latency"] += latency
+        else:
+            do_operation(random_id, random_op, random_db, redis_client, mongo_db, nuke_flag)
 
     queue.put(thread_result)
-    print(f'Thread {thread_id} exiting...')
+    # print(f'Thread {thread_id} exiting...')
 
 def do_operation(random_id, random_op, random_db, redis_client, mongo_db, nuke_flag):
     if random_db == 1:
@@ -99,7 +107,6 @@ def do_operation(random_id, random_op, random_db, redis_client, mongo_db, nuke_f
         if random_op == 0:
             db_read(random_id, random_db, redis_client, cursor, mongo_db)
         elif random_op == 1:
-            # TODO: multiple owners? - must do for correctness, maybe for throuhgput?
             if nuke_ownership_update_add(random_id, random_db, 0, random_id):
                 db_insert(random_id, random_db, redis_client, cursor, mongo_db)
         elif random_op == 2:
@@ -120,22 +127,31 @@ def do_operation(random_id, random_op, random_db, redis_client, mongo_db, nuke_f
     if random_db == 1:
         con.close()
     
-
 def main():
-    thread_pool = []
-    number_threads = 4
-    thread_results = [0] * number_threads 
-
     parser = argparse.ArgumentParser()
-    parser.add_argument('--nuke', action="store_true", help='runs the throughput test with nuking')
+    parser.add_argument('--nuke', action="store_true", help='runs the test with nuking')
+    parser.add_argument('--latency', action="store_true", help='runs the latency test')
     parser.add_argument('-n', '--num-operations', type=int, default=1000, help='number of operations to perform')
+    parser.add_argument('-c', '--num-threads', type=int, default=4, help='number of operations to perform')
+    parser.add_argument('--read', type=int, default=75, help='percentage of read operations to perform')
+    parser.add_argument('--insert', type=int, default=10, help='percentage of insert operations to perform')
+    parser.add_argument('--update', type=int, default=10, help='percentage of update operations to perform')
+    parser.add_argument('--delete', type=int, default=5, help='percentage of delete operations to perform')
+    
     args = parser.parse_args()
 
     NUM_OPERATIONS = args.num_operations
-    PRELOAD = min(256, NUM_OPERATIONS // 10)
+    PRELOAD = min(256, NUM_OPERATIONS // 4)
+    number_threads = args.num_threads
+    weights = [args.read, args.insert, args.update, args.delete]
+
+    print("Latency test? ", args.latency)
     print("Number of operations: ", NUM_OPERATIONS)
     print("Preload: ", PRELOAD)
+    print("Number of threads: ", number_threads)
+    print("Weights: ", weights)
     print("Are we nuking? ", args.nuke)
+    print()
 
     # initialize DBs
     con = sqlite3.connect("throughput_sql.db")
@@ -162,20 +178,34 @@ def main():
 
     con.close() # needed for SQLite3 to give up the lock
 
+    thread_pool = []
+    thread_results = {"read": 0, "insert": 0, "update": 0, "delete": 0,
+                     "read_latency": 0, "insert_latency": 0, "update_latency": 0, "delete_latency": 0}
     queue = multiprocessing.Queue()
     start_time = time.time()
 
     for i in range(number_threads):
-        thread = multiprocessing.Process(target=thread_function_start, args=(i, queue, NUM_OPERATIONS, PRELOAD, args.nuke))
+        thread = multiprocessing.Process(target=thread_function_start, args=(i, queue, NUM_OPERATIONS, PRELOAD, args.nuke, weights, args.latency))
         
         thread.start()
         thread_pool.append(thread)
 
     for thread in thread_pool:
-        # print(queue.get())
         thread.join()
-    
+
     end_time = time.time()
+
+    if args.latency:
+        for thread in thread_pool:
+            result = queue.get()
+            for key in thread_results.keys():
+                thread_results[key] += result[key]
+
+        print(f"Average read latency: {1000 * thread_results['read_latency'] / thread_results['read']} ms")
+        print(f"Average insert latency: {1000 * thread_results['insert_latency'] / thread_results['insert']} ms")
+        print(f"Average update latency: {1000 * thread_results['update_latency'] / thread_results['update']} ms")
+        print(f"Average delete latency: {1000 * thread_results['delete_latency'] / thread_results['delete']} ms")
+        print()
 
     con = sqlite3.connect("throughput_sql.db")
     cur = con.cursor()
@@ -236,4 +266,3 @@ if __name__ == "__main__":
 # 1- Operations per second vs. different read, write, update ownership percentages
 # 2- Operations per second vs. different number of threads
 # 3- Average time to complete a request (latency) vs. different operation types with two bars each
-# 4- Operations per second vs. number of data stores
