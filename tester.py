@@ -9,7 +9,6 @@ import sqlite3
 from pymongo import MongoClient
 from nuke import nuke_ownership_update_add, nuke
 
-
 operations = ["mongo_read", "mongo_insert", "mongo_update", "mongo_del", "kv_read", 
               "kv_insert", "kv_update", "kv_del", "sql_read", "sql_insert", "sql_update", "sql_del"]
 
@@ -42,7 +41,7 @@ def db_update(row_id, db_id, redis_client, cursor, mongo_db):
         mongo_db.main.replace_one({"_id": row_id}, {"content": random_string(5)}, False)
         pass
 
-def thread_function_start(thread_id, queue, NUM_OPERATIONS, NUM_USERS, nuke_flag):
+def thread_function_start(thread_id, queue, NUM_OPERATIONS, PRELOAD, nuke_flag):
     print(f'Thread {thread_id} started execution...')
 
     # SQLite3 initalized per operation later for concurrent access
@@ -54,27 +53,18 @@ def thread_function_start(thread_id, queue, NUM_OPERATIONS, NUM_USERS, nuke_flag
     thread_result = {"kv_read": 0, "kv_insert": 0, "kv_update": 0, "kv_del": 0, "sql_read": 0, "sql_insert": 0,
                      "sql_update": 0, "sql_del": 0, "mongo_read": 0, "mongo_insert": 0, "mongo_update": 0, "mongo_del": 0}
     
-    prev_ids = [thread_id * NUM_OPERATIONS + 1, thread_id * NUM_OPERATIONS + 1, thread_id * NUM_OPERATIONS + 1]
-
-    # TODO: Preload database here
-    # TODO: Preload before threads are initialized!
-    do_operation(prev_ids[0], 1, 0, redis_client, mongo_db, nuke_flag)
-    do_operation(prev_ids[1], 1, 1, redis_client, mongo_db, nuke_flag)
-    do_operation(prev_ids[2], 1, 2, redis_client, mongo_db, nuke_flag)
+    prev_ids = [thread_id * NUM_OPERATIONS + PRELOAD, thread_id * NUM_OPERATIONS + PRELOAD, thread_id * NUM_OPERATIONS + PRELOAD]
     
-
     for i in range(NUM_OPERATIONS):
         random_db = random.randint(0, 2)
         random_op = random.choices([0, 1, 2, 3], weights=[95, 2.5, 2.5, 0], k=1)[0]
 
         if random_op == 1:  # if insert
-            random_id = prev_ids[random_db] + 1
+            random_id = prev_ids[random_db]
             prev_ids[random_db] += 1
         else:
             # TODO: filter for deletes
-            random_id = random.randint(0, prev_ids[random_db])
-            while random_id == 0:
-                random_id = random.randint(0, prev_ids[random_db])
+            random_id = random.randint(0, prev_ids[random_db] - 1)
             
         operation = operations[random_db * 4 + random_op]
         
@@ -131,11 +121,13 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--nuke', action="store_true", help='runs the throughput test with nuking')
-    parser.add_argument('-n', '--num-operations', type=int, default=100, help='number of operations to perform')
+    parser.add_argument('-n', '--num-operations', type=int, default=1000, help='number of operations to perform')
     args = parser.parse_args()
 
     NUM_OPERATIONS = args.num_operations
+    PRELOAD = min(128, NUM_OPERATIONS // 4)
     print("Number of operations: ", NUM_OPERATIONS)
+    print("Preload: ", NUM_OPERATIONS)
     print("Are we nuking? ", args.nuke)
 
     # initialize DBs
@@ -156,7 +148,10 @@ def main():
     redis_client = redis.Redis(host="localhost", port=6379, db=9, decode_responses=True)
     redis_client.flushall()
 
-    # TODO: Preload database here
+    for thread_number in range(number_threads):
+        for i in range(PRELOAD):
+            for random_db in range(3):
+                db_insert(thread_number * NUM_OPERATIONS + i, random_db, redis_client, cur, mongo_db)
 
     con.close() # needed for SQLite3 to give up the lock
 
@@ -164,7 +159,7 @@ def main():
     start_time = time.time()
 
     for i in range(number_threads):
-        thread = multiprocessing.Process(target=thread_function_start, args=(i, queue, NUM_OPERATIONS, 4, args.nuke))
+        thread = multiprocessing.Process(target=thread_function_start, args=(i, queue, NUM_OPERATIONS, PRELOAD, args.nuke))
         
         thread.start()
         thread_pool.append(thread)
@@ -187,9 +182,6 @@ def main():
     execution_time = end_time - start_time
     print(f"Execution time: {execution_time} seconds")
     print(f"{NUM_OPERATIONS * number_threads / execution_time} operations per second")
-
-if __name__ == "__main__":
-    main()
 
 # debugging helpers
 def print_table(cursor):
@@ -228,6 +220,9 @@ def dummy_seq(results, thread_id):
         count += 1
     
     results[thread_id] = count
+
+if __name__ == "__main__":
+    main()
 
 ######
 ## Results to generate
