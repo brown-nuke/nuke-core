@@ -45,11 +45,7 @@ def db_update(row_id, db_id, redis_client, cursor, mongo_db):
 def thread_function_start(thread_id, queue, NUM_OPERATIONS, NUM_USERS, nuke_flag):
     print(f'Thread {thread_id} started execution...')
 
-    # Should each thread establish a seperate connection to DBs?
-    con = sqlite3.connect("throughput_sql.db")
-    con.execute("PRAGMA busy_timeout = 60000")  # because threads hold the lock, making the experiment fail
-    cursor = con.cursor()
-
+    # SQLite3 initalized per operation later for concurrent access
     mongo_client = MongoClient()
     mongo_db = mongo_client["throughput_mongo"]
 
@@ -61,9 +57,10 @@ def thread_function_start(thread_id, queue, NUM_OPERATIONS, NUM_USERS, nuke_flag
     prev_ids = [thread_id * NUM_OPERATIONS + 1, thread_id * NUM_OPERATIONS + 1, thread_id * NUM_OPERATIONS + 1]
 
     # TODO: Preload database here
-    do_operation(prev_ids[0], 1, 0, redis_client, cursor, mongo_db, nuke_flag)
-    do_operation(prev_ids[1], 1, 1, redis_client, cursor, mongo_db, nuke_flag)
-    do_operation(prev_ids[2], 1, 2, redis_client, cursor, mongo_db, nuke_flag)
+    # TODO: Preload before threads are initialized!
+    do_operation(prev_ids[0], 1, 0, redis_client, mongo_db, nuke_flag)
+    do_operation(prev_ids[1], 1, 1, redis_client, mongo_db, nuke_flag)
+    do_operation(prev_ids[2], 1, 2, redis_client, mongo_db, nuke_flag)
     
 
     for i in range(NUM_OPERATIONS):
@@ -81,15 +78,20 @@ def thread_function_start(thread_id, queue, NUM_OPERATIONS, NUM_USERS, nuke_flag
             
         operation = operations[random_db * 4 + random_op]
         
-        do_operation(random_id, random_op, random_db, redis_client, cursor, mongo_db, nuke_flag)
+        do_operation(random_id, random_op, random_db, redis_client, mongo_db, nuke_flag)
 
         thread_result[operation] += 1
 
     queue.put(thread_result)
     print(f'Thread {thread_id} exiting...')
 
-def do_operation(random_id, random_op, random_db, redis_client, cursor, mongo_db, nuke_flag):
-    # print_table(cursor)
+def do_operation(random_id, random_op, random_db, redis_client, mongo_db, nuke_flag):
+    if random_db == 1:
+        con = sqlite3.connect("throughput_sql.db")
+        cursor = con.cursor()
+        # print_table(cursor)
+    else:
+        cursor = None
     # print_mongo_collection(mongo_db)
     # print_redis_db(redis_client)
 
@@ -118,6 +120,9 @@ def do_operation(random_id, random_op, random_db, redis_client, cursor, mongo_db
             pass
     
     # print()
+    if random_db == 1:
+        con.close()
+    
 
 def main():
     thread_pool = []
@@ -151,8 +156,11 @@ def main():
     redis_client = redis.Redis(host="localhost", port=6379, db=9, decode_responses=True)
     redis_client.flushall()
 
-    queue = multiprocessing.Queue()
+    # TODO: Preload database here
 
+    con.close() # needed for SQLite3 to give up the lock
+
+    queue = multiprocessing.Queue()
     start_time = time.time()
 
     for i in range(number_threads):
@@ -166,6 +174,9 @@ def main():
         thread.join()
     
     end_time = time.time()
+
+    con = sqlite3.connect("throughput_sql.db")
+    cur = con.cursor()
 
     # cleanup DBs
     cur.execute("DROP TABLE IF EXISTS throughput_test;")
@@ -217,3 +228,10 @@ def dummy_seq(results, thread_id):
         count += 1
     
     results[thread_id] = count
+
+######
+## Results to generate
+# 1- Operations per second vs. different read, write, update ownership percentages
+# 2- Operations per second vs. different number of threads
+# 3- Average time to complete a request (latency) vs. different operation types with two bars each
+# 4- Operations per second vs. number of data stores
