@@ -39,7 +39,14 @@ def db_update(row_id, db_id, redis_client, cursor, mongo_db):
         cursor.execute(f"UPDATE throughput_test SET content = ? WHERE id = ?", (random_string(5), row_id))
     elif db_id == 2:    # mongo
         mongo_db.main.replace_one({"_id": row_id}, {"content": random_string(5)}, False)
-        pass
+
+def db_delete(row_id, db_id, redis_client, cursor, mongo_db):
+    if db_id == 0:      # redis
+        redis_client.delete(row_id)
+    elif db_id == 1:    # sql
+        cursor.execute(f"DELETE FROM throughput_test WHERE id = ?", (row_id,))
+    elif db_id == 2:    # mongo
+        mongo_db.main.delete_one({"_id": row_id})
 
 def thread_function_start(thread_id, queue, NUM_OPERATIONS, PRELOAD, nuke_flag):
     print(f'Thread {thread_id} started execution...')
@@ -54,6 +61,7 @@ def thread_function_start(thread_id, queue, NUM_OPERATIONS, PRELOAD, nuke_flag):
                      "sql_update": 0, "sql_del": 0, "mongo_read": 0, "mongo_insert": 0, "mongo_update": 0, "mongo_del": 0}
     
     prev_ids = [thread_id * NUM_OPERATIONS + PRELOAD, thread_id * NUM_OPERATIONS + PRELOAD, thread_id * NUM_OPERATIONS + PRELOAD]
+    first_ids = [thread_id * NUM_OPERATIONS, thread_id * NUM_OPERATIONS, thread_id * NUM_OPERATIONS] # sliding id window for deletions
     
     for i in range(NUM_OPERATIONS):
         random_db = random.randint(0, 2)
@@ -62,9 +70,11 @@ def thread_function_start(thread_id, queue, NUM_OPERATIONS, PRELOAD, nuke_flag):
         if random_op == 1:  # if insert
             random_id = prev_ids[random_db]
             prev_ids[random_db] += 1
+        elif random_op == 3:    # if delete
+            random_id = first_ids[random_db]
+            first_ids[random_db] += 1
         else:
-            # TODO: filter for deletes
-            random_id = random.randint(0, prev_ids[random_db] - 1)
+            random_id = random.randint(first_ids[random_db], prev_ids[random_db] - 1)
             
         operation = operations[random_db * 4 + random_op]
         
@@ -95,9 +105,7 @@ def do_operation(random_id, random_op, random_db, redis_client, mongo_db, nuke_f
         elif random_op == 2:
             db_update(random_id, random_db, redis_client, cursor, mongo_db)
         elif random_op == 3:
-            # TODO: Should we include point deletes as well?
-            # It's probably better for our purposes cause we don't add overhead
-            pass
+            db_delete(random_id, random_db, redis_client, cursor, mongo_db)
     else:
         if random_op == 0:
             db_read(random_id, random_db, redis_client, cursor, mongo_db)
@@ -106,8 +114,7 @@ def do_operation(random_id, random_op, random_db, redis_client, mongo_db, nuke_f
         elif random_op == 2:
             db_update(random_id, random_db, redis_client, cursor, mongo_db)
         elif random_op == 3:
-            # TODO: point deletes?
-            pass
+            db_delete(random_id, random_db, redis_client, cursor, mongo_db)
     
     # print()
     if random_db == 1:
@@ -125,9 +132,9 @@ def main():
     args = parser.parse_args()
 
     NUM_OPERATIONS = args.num_operations
-    PRELOAD = min(128, NUM_OPERATIONS // 4)
+    PRELOAD = min(256, NUM_OPERATIONS // 10)
     print("Number of operations: ", NUM_OPERATIONS)
-    print("Preload: ", NUM_OPERATIONS)
+    print("Preload: ", PRELOAD)
     print("Are we nuking? ", args.nuke)
 
     # initialize DBs
