@@ -1,5 +1,5 @@
 #!/bin/bash
-num_operations=1000000
+num_operations=100000
 
 run_different_operations_test() {
     percentages=(
@@ -17,7 +17,7 @@ run_different_operations_test() {
 }
 
 run_different_number_threads_test() {
-    number_threads="1 2 4 8 16 32 48"
+    number_threads="1 2 3 4 5 6 7 8 9 10 11 12"
 
     for number_thread in $number_threads; do
         python3 tester.py -n $num_operations -c $number_thread

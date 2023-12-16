@@ -66,7 +66,7 @@ def thread_function_start(thread_id, queue, NUM_OPERATIONS, PRELOAD, nuke_flag, 
     
     for i in range(NUM_OPERATIONS):
         random_db = random.randint(0, 2)
-        random_op = random.choices([0, 1, 2, 3], weights=[95, 3, 2, 1], k=1)[0]
+        random_op = random.choices([0, 1, 2, 3], weights=weights, k=1)[0]
 
         if random_op == 1:  # if insert
             random_id = prev_ids[random_db]
@@ -78,7 +78,6 @@ def thread_function_start(thread_id, queue, NUM_OPERATIONS, PRELOAD, nuke_flag, 
             random_id = random.randint(first_ids[random_db], prev_ids[random_db] - 1)
             
         operation = operations[random_op]
-        
         if latency_test:
             start_time = time.time()
             do_operation(random_id, random_op, random_db, redis_client, mongo_db, nuke_flag)
@@ -100,31 +99,43 @@ def do_operation(random_id, random_op, random_db, redis_client, mongo_db, nuke_f
         # print_table(cursor)
     else:
         cursor = None
-    # print_mongo_collection(mongo_db)
-    # print_redis_db(redis_client)
+    # if random_db == 2:
+    #     print_mongo_collection(mongo_db)
+    # if random_db == 0:
+    #     print_redis_db(redis_client)
 
     if nuke_flag:
         if random_op == 0:
+            # print("reading", random_id)
             db_read(random_id, random_db, redis_client, cursor, mongo_db)
         elif random_op == 1:
+            # print("inserting", random_id)
             if nuke_ownership_update_add(random_id, random_db, 0, random_id):
                 db_insert(random_id, random_db, redis_client, cursor, mongo_db)
         elif random_op == 2:
+            # print("updating", random_id)
             db_update(random_id, random_db, redis_client, cursor, mongo_db)
         elif random_op == 3:
+            # print("deleting", random_id)
             db_delete(random_id, random_db, redis_client, cursor, mongo_db)
     else:
         if random_op == 0:
+            # print("reading", random_id)
             db_read(random_id, random_db, redis_client, cursor, mongo_db)
         elif random_op == 1:
+            # print("inserting", random_id)
             db_insert(random_id, random_db, redis_client, cursor, mongo_db)
         elif random_op == 2:
+            # print("updating", random_id)
             db_update(random_id, random_db, redis_client, cursor, mongo_db)
         elif random_op == 3:
+            # print("deleting", random_id)
             db_delete(random_id, random_db, redis_client, cursor, mongo_db)
     
     # print()
+
     if random_db == 1:
+        con.commit()
         con.close()
     
 def main():
@@ -144,6 +155,7 @@ def main():
     PRELOAD = min(256, NUM_OPERATIONS // 4)
     number_threads = args.num_threads
     weights = [args.read, args.insert, args.update, args.delete]
+    # weights = [0, 50, 25, 25]
 
     print("Latency test? ", args.latency)
     print("Number of operations: ", NUM_OPERATIONS)
@@ -176,6 +188,7 @@ def main():
             for random_db in range(3):
                 db_insert(thread_number * NUM_OPERATIONS + i, random_db, redis_client, cur, mongo_db)
 
+    con.commit()
     con.close() # needed for SQLite3 to give up the lock
 
     thread_pool = []
