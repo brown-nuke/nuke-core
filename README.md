@@ -19,6 +19,8 @@ sudo ./start_redis.sh
 Please install and run mongodb following instructions here:
 ```
 https://www.mongodb.com/docs/manual/administration/install-community/
+
+sudo systemctl start mongod
 ```
 
 #### Vim (for editing posts)
